@@ -71,11 +71,11 @@ _command_cd() {
 
   if [[ -z "$COMMACD_CD" ]]; then
     if [[ "$PWD" != "$dir" ]]; then
-      display="$(builtin cd "$dir")"
+      display="$(builtin cd "$dir" || return 1)"
       if [[ -z "$display" ]]; then
-        builtin cd "$dir" && pwd
+        builtin cd "$dir" && pwd || return 1
       else
-        builtin cd "$dir"
+        builtin cd "$dir" || return 1
       fi
     else
       echo "commacd: no matches found" >&2
@@ -150,7 +150,7 @@ _commacd_forward_by_prefix() {
   # local matches=($(_commacd_expand "$(_commacd_prefix_glob "$*")"))f
   local matches
   mapfile -t matches  <<< "$(_commacd_expand "$(_commacd_prefix_glob "$*")")"
-  if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" && ${#matches[@]} -eq 0 ]]; then
+  if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]] && [[ -z "${matches[0]}" ]]; then
     # matches=($(_commacd_expand "$(_commacd_glob "$*")"))
     mapfile -t matches <<< "$(_commacd_expand "$(_commacd_glob "$*")")"
   fi
@@ -381,20 +381,26 @@ _commacd_completion() {
     # shellcheck disable=SC2116
     pattern=$(echo ~/"${pattern:2}")
   fi
-  local completion=($(COMMACD_NOTTY=on $1 "$pattern"))
-  if ! _commacd_completion_valid "$pattern" "$completion"; then
+  # local completion=($(COMMACD_NOTTY=on $1 "$pattern"))
+  local completion
+  mapfile -t completion <<< "$(COMMACD_NOTTY=on $1 "$pattern")"
+  if ! _commacd_completion_valid "$pattern" "${completion[@]}"; then
     pattern="$pattern?"
     # retry with ? matching
-    completion=($(COMMACD_NOTTY=on $1 "$pattern"))
-    if ! _commacd_completion_valid "$pattern" "$completion"; then
+    # completion=($(COMMACD_NOTTY=on $1 "$pattern"))
+    mapfile -t completion <<< "$(COMMACD_NOTTY=on $1 "$pattern")"
+    if ! _commacd_completion_valid "$pattern" "${completion[@]}"; then
       return
     fi
   fi
   # remove trailing / (if any)
   for i in "${!completion[@]}"; do
-    completion[$i]="${completion[$i]%/}";
+    completion[i]="${completion[$i]%/}";
   done
-  COMPREPLY=($(compgen -W "$(printf "%s\n" "${completion[@]}")" -- ''))
+  mapfile -t COMPREPLY <<< "$(compgen -W "$(printf "%s\n" "${completion[@]}")" -- '')"
+  for x in "${COMPREPLY[@]}"; do
+    printf "entry: %s\n" "$x"
+  done
 }
 
 _commacd_forward_completion() {
