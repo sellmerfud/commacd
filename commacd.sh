@@ -1,8 +1,10 @@
 # shellcheck disable=SC2148
 
-# Note:
+# sellmerfud note:
+# ----------------
 # This is a modified version of the script found at:  https://github.com/shyiko/commacd
 # I made a few minor tweaks so that it suits me better...
+# ----------------
 
 # commacd - a faster way to move around (Bash 3+/Zsh).
 
@@ -31,15 +33,10 @@
 
 # turn on case-insensitive search by default
 
-if [ -n "$ZSH_VERSION" ]; then
-  # CAUTION: if you name local variable "path" (when no_case_glob is set) it
-  # will override $PATH
-  setopt no_case_glob
-  unsetopt nomatch
-elif [ -n "$BASH_VERSION" ]; then
+if [ -n "$BASH_VERSION" ]; then
   shopt -s nocaseglob
 else
-  echo "commacd: unsupported shell" >&2
+  echo "commacd: is only supported for bash" >&2
   return
 fi
 
@@ -50,19 +47,13 @@ _commacd_split() {
 _commacd_join() { local IFS="$1"; shift; echo "$*"; }
 
 _commacd_expand() (
-  if [ -n "$ZSH_VERSION" ]; then
-    setopt extended_glob null_glob
-    # shellcheck disable=SC2086,SC2296
-    print -rl - ${~1}
-  else
-    shopt -s extglob nullglob
-    shopt -u failglob
-    # Allow globbing in case $1 contains '*'
-    # shellcheck disable=SC2206
-    local ex=($1)
+  shopt -s extglob nullglob
+  shopt -u failglob
+  # Allow globbing in case $1 contains '*'
+  # shellcheck disable=SC2206
+  local ex=($1)
 
-    printf "%s\n" "${ex[@]}"
-  fi
+  printf "%s\n" "${ex[@]}"
 )
 
 _command_cd() {
@@ -97,17 +88,9 @@ _commacd_choose_match() {
   local threshold=$((11-${COMMACD_SEQSTART:-0}))
   if [[ "$COMMACD_IMPLICITENTER" == "on" && \
       ${#matches[@]} -lt $threshold ]]; then
-    if [ -n "$ZSH_VERSION" ]; then
-      read -k1 "selection?: " >&2
-    else
-      read -n1 -e -p ': ' selection >&2
-    fi
+    read -r -n1 -e -p ': ' selection >&2
   else
-    if [ -n "$ZSH_VERSION" ]; then
-      read "selection?: " >&2
-    else
-      read -e -p ': ' selection >&2
-    fi
+    read -r -e -p ': ' selection >&2
   fi
 
   if [[ -z "$selection" ]]; then
@@ -188,9 +171,9 @@ _commacd_forward() {
 }
 
 _commacd_marked() {
-  local dir="${*%/}"
+  local dir markers
+  dir="${*%/}"
   # local markers=(${COMMACD_MARKER:-.git/ .hg/ .svn/})
-  local markers
   read -ra markers <<< "${COMMACD_MARKER:-.git/ .hg/ .svn/}"
   if [ -n "$ZSH_VERSION" ]; then
     markers=("${=markers[1]}") # shwordsplit
