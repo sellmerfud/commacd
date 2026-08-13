@@ -6,7 +6,7 @@
 # I made a few minor tweaks so that it suits me better...
 # ----------------
 
-# commacd - a faster way to move around (Bash 3+/Zsh).
+# commacd - a faster way to move around (Bash 3+).
 
 #
 # ENV variables that can be used to control commacd:
@@ -98,9 +98,6 @@ _commacd_choose_match() {
     return
   elif [[ "$selection" =~ ^[0-9]+$ ]]; then
     local i=$((selection-${COMMACD_SEQSTART:-0}))
-    if [ -n "$ZSH_VERSION" ]; then
-      ((i++)) # zsh arrays are 1-based
-    fi
     if [[ "${matches[i]}" != "" ]]; then
       echo -n "${matches[i]}"
       return
@@ -175,9 +172,6 @@ _commacd_marked() {
   dir="${*%/}"
   # local markers=(${COMMACD_MARKER:-.git/ .hg/ .svn/})
   read -ra markers <<< "${COMMACD_MARKER:-.git/ .hg/ .svn/}"
-  if [ -n "$ZSH_VERSION" ]; then
-    markers=("${=markers[1]}") # shwordsplit
-  fi
   for marker in "${markers[@]}"; do
     if [[ -e "$dir/$marker" ]]; then
       return 0
@@ -208,19 +202,12 @@ _commacd_backward_by_prefix() (
     # matches=($(_commacd_expand "$dir/${1}*/"))
     mapfile -t matches <<< "$(_commacd_expand "$dir/${1}*/")"
     for match in "${matches[@]}"; do
-      if [ -n "$ZSH_VERSION" ]; then
-        if [[ "${match:l}" == "${prev_dir:l}/" ]]; then
-          echo -n "$prev_dir"
-          return
-        fi
-      else
-        # ${var,,}/${var^^} are not available in BASH 3.2 (macOS 10.14)
-        # hence nocasematch & ==
-        shopt -s nocasematch
-        if [[ "$match" == "$prev_dir/" ]]; then
-          echo -n "$prev_dir"
-          return
-        fi
+      # ${var,,}/${var^^} are not available in BASH 3.2 (macOS 10.14)
+      # hence nocasematch & ==
+      shopt -s nocasematch
+      if [[ "$match" == "$prev_dir/" ]]; then
+        echo -n "$prev_dir"
+        return
       fi
     done
   done
