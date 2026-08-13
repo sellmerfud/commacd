@@ -1,5 +1,11 @@
+# shellcheck disable=SC2148
+
+# Note:
+# This is a modified version of the script found at:  https://github.com/shyiko/commacd
+# I made a few minor tweaks so that it suits me better...
+
 # commacd - a faster way to move around (Bash 3+/Zsh).
-# https://github.com/shyiko/commacd
+
 #
 # ENV variables that can be used to control commacd:
 #   COMMACD_CD - function to change the directory
@@ -46,21 +52,31 @@ _commacd_join() { local IFS="$1"; shift; echo "$*"; }
 _commacd_expand() (
   if [ -n "$ZSH_VERSION" ]; then
     setopt extended_glob null_glob
-    # shellcheck disable=SC2086
+    # shellcheck disable=SC2086,SC2296
     print -rl - ${~1}
   else
     shopt -s extglob nullglob
     shopt -u failglob
+    # Allow globbing in case $1 contains '*'
+    # shellcheck disable=SC2206
     local ex=($1)
+
     printf "%s\n" "${ex[@]}"
   fi
 )
 
 _command_cd() {
-  local dir=$1 IFS=$' \t\n'
+  local dir=$1 IFS=$' \t\n' display
+  [[ -z "$dir" ]] && return
+
   if [[ -z "$COMMACD_CD" ]]; then
     if [[ "$PWD" != "$dir" ]]; then
-      builtin cd "$dir" && pwd
+      display="$(builtin cd "$dir")"
+      if [[ -z "$display" ]]; then
+        builtin cd "$dir" && pwd
+      else
+        builtin cd "$dir"
+      fi
     else
       echo "commacd: no matches found" >&2
       return 1
@@ -93,7 +109,11 @@ _commacd_choose_match() {
       read -e -p ': ' selection >&2
     fi
   fi
-  if [[ "$selection" =~ ^[0-9]+$ ]]; then
+
+  if [[ -z "$selection" ]]; then
+    echo -n ""
+    return
+  elif [[ "$selection" =~ ^[0-9]+$ ]]; then
     local i=$((selection-${COMMACD_SEQSTART:-0}))
     if [ -n "$ZSH_VERSION" ]; then
       ((i++)) # zsh arrays are 1-based
@@ -127,9 +147,12 @@ _commacd_glob() (
 )
 
 _commacd_forward_by_prefix() {
-  local matches=($(_commacd_expand "$(_commacd_prefix_glob "$*")"))
+  # local matches=($(_commacd_expand "$(_commacd_prefix_glob "$*")"))f
+  local matches
+  mapfile -t matches  <<< "$(_commacd_expand "$(_commacd_prefix_glob "$*")")"
   if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" && ${#matches[@]} -eq 0 ]]; then
-    matches=($(_commacd_expand "$(_commacd_glob "$*")"))
+    # matches=($(_commacd_expand "$(_commacd_glob "$*")"))
+    mapfile -t matches <<< "$(_commacd_expand "$(_commacd_glob "$*")")"
   fi
   case ${#matches[@]} in
     0) echo -n "$PWD";;
@@ -141,7 +164,9 @@ _commacd_forward_by_prefix() {
 _commacd_forward() {
   if [[ -z "$*" ]]; then return 1; fi
   local IFS=$'\n'
-  local dir=($(_commacd_forward_by_prefix "$@"))
+  # local dir=($(_commacd_forward_by_prefix "$@"))
+  local dir final_dir
+  mapfile -t dir <<< "$(_commacd_forward_by_prefix "$@")"
   if [[ "$COMMACD_NOTTY" == "on" ]]; then
     printf "%s\n" "${dir[@]}"
     return
@@ -150,19 +175,23 @@ _commacd_forward() {
     # https://github.com/shyiko/commacd/issues/12
     trap 'trap - SIGINT; stty '"$(stty -g)" SIGINT
 
-    dir=$(_commacd_choose_match "${dir[@]}")
+    final_dir="$(_commacd_choose_match "${dir[@]}")"
 
     # make sure trap is removed regardless of whether read -e ... was
     # interrupted or not
     trap - SIGINT
-    if [[ -z "$dir" ]]; then return 1; fi
+    [[ "${dir[0]}" == "$PWD" ]] && return 1
+  else
+    final_dir="${dir[0]}"
   fi
-  _command_cd "$dir"
+  _command_cd "$final_dir"
 }
 
 _commacd_marked() {
   local dir="${*%/}"
-  local markers=(${COMMACD_MARKER:-.git/ .hg/ .svn/})
+  # local markers=(${COMMACD_MARKER:-.git/ .hg/ .svn/})
+  local markers
+  read -ra markers <<< "${COMMACD_MARKER:-.git/ .hg/ .svn/}"
   if [ -n "$ZSH_VERSION" ]; then
     markers=("${=markers[1]}") # shwordsplit
   fi
@@ -193,7 +222,8 @@ _commacd_backward_by_prefix() (
   while [[ -n "$dir" ]]; do
     prev_dir="$dir"
     dir="${dir%/*}"
-    matches=($(_commacd_expand "$dir/${1}*/"))
+    # matches=($(_commacd_expand "$dir/${1}*/"))
+    mapfile -t matches <<< "$(_commacd_expand "$dir/${1}*/")"
     for match in "${matches[@]}"; do
       if [ -n "$ZSH_VERSION" ]; then
         if [[ "${match:l}" == "${prev_dir:l}/" ]]; then
@@ -220,7 +250,55 @@ _commacd_backward_by_prefix() (
 
 # replace $1 with $2 in $PWD (`,, $1 $2`)
 _commacd_backward_substitute() {
-  echo -n "${PWD/$1/$2}"
+  # echo -n "${PWD/$1/$2}"
+  local cwd_parts num_parts idx dir head_parts tail_parts
+  local head_matches matches final_dir target
+  local target_prefix="$1" repl_prefix="$2"
+
+  mapfile -t cwd_parts <<< "$(_commacd_split "$PWD")"
+  # Remove empty entry at first index
+  unset 'cwd_parts[0]'
+  cwd_parts=("${cwd_parts[@]}")
+  num_parts="${#cwd_parts[@]}"
+  # Find right most part of the workding directory path
+  # that starts with the target prefix
+  for ((idx=num_parts - 1; idx >= 0; idx--)); do
+    local part="${cwd_parts[$idx]}"
+    [[ "$part" == "/$target_prefix"* ]] && break
+  done
+
+  if [[ $idx == -1 ]]; then
+    final_dir=""
+    echo "'$target_prefix' cannot be matched in the working directory path!" >&2
+  else
+    target="${cwd_parts[idx]}"  # The full target for error reporting
+    # The head of the cwd path preceeding the target with
+    # with the replacment prefix and a glob appended for lookup
+    head_parts=("${cwd_parts[@]:0:idx}" "/$repl_prefix*")
+    head="$(_commacd_join '' "${head_parts[@]}")"
+    mapfile -t head_matches <<< "$(_commacd_expand "$head")"
+    # The tail is everything following the replaced path part
+    tail_parts=("${cwd_parts[@]:idx+1}")
+    tail="$(_commacd_join '' "${tail_parts[@]}")"
+    # Find all directories that exist when we append the tail
+    # too one of the head matches.
+    final_matches=()
+    for head_match in "${head_matches[@]}"; do
+      local candidate="$head_match/$tail"
+      [[ -d "$candidate" ]] && final_matches+=("$candidate")
+    done
+
+    case "${#final_matches[@]}" in
+      0)
+        final_dir=""
+        echo "'$repl_prefix' cannot be matched in location of '$target'" >&2
+       ;;
+      1) final_dir="${final_matches[0]}" ;;
+      *) final_dir="$(_commacd_choose_match "${final_matches[@]}")" ;;
+    esac
+  fi
+
+  echo -n "$final_dir"
 }
 
 # choose `,,` strategy based on a number of arguments
@@ -239,6 +317,7 @@ _commacd_backward() {
     echo -n "${dir}"
     return
   fi
+
   _command_cd "$dir"
 }
 
@@ -246,21 +325,28 @@ _commacd_backward_forward_by_prefix() {
   local dir="$PWD" pth="${*%/}/" matches match IFS=$'\n'
   if [[ "${pth:0:1}" == "/" ]]; then
     # assume that we've been brought here by the completion
-    dir=(${pth%/}*)
-    printf "%s\n" "${dir[@]}"
+    local absdir=("${pth%/}"*)
+    printf "%s\n" "${absdir[*]}"
     return
   fi
   while [[ -n "$dir" ]]; do
     dir="${dir%/*}"
-    matches=($(_commacd_expand "$dir/$(_commacd_prefix_glob "$*")"))
-    if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" && ${#matches[@]} -eq 0 ]]; then
-      matches=($(_commacd_expand "$dir/$(_commacd_glob "$*")"))
+    # matches=($(_commacd_expand "$dir/$(_commacd_prefix_glob "$*")"))
+    mapfile -t matches <<< "$(_commacd_expand "$dir/$(_commacd_prefix_glob "$*")")"
+    # if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" && ${#matches[@]} -eq 0 ]]; then
+    if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]] && [[ -z "${matches[0]}" ]]; then
+      # matches=($(_commacd_expand "$dir/$(_commacd_glob "$*")"))
+      mapfile -t matches <<< "$(_commacd_expand "$dir/$(_commacd_glob "$*")")"
     fi
-    case ${#matches[@]} in
-      0) ;;
-      *) printf "%s\n" "${matches[@]}"
-         return;;
-    esac
+    # case ${#matches[@]} in
+    #   0) ;;
+    #   *) printf "%s\n" "${matches[@]}"
+    #      return;;
+    # esac
+    if [[ -n "${matches[0]}" ]]; then
+      printf "%s\n" "${matches[@]}"
+      return
+    fi
   done
   echo -n "$PWD"
 }
@@ -269,15 +355,19 @@ _commacd_backward_forward_by_prefix() {
 _commacd_backward_forward() {
   if [[ -z "$*" ]]; then return 1; fi
   local IFS=$'\n'
-  local dir=($(_commacd_backward_forward_by_prefix "$@"))
+  # local dir=($(_commacd_backward_forward_by_prefix "$@"))
+  local dir
+  mapfile -t dir <<< "$(_commacd_backward_forward_by_prefix "$@")"
   if [[ "$COMMACD_NOTTY" == "on" ]]; then
     printf "%s\n" "${dir[@]}"
     return
   fi
   if [[ ${#dir[@]} -gt 1 ]]; then
-    dir=$(_commacd_choose_match "${dir[@]}")
+    # dir=$(_commacd_choose_match "${dir[@]}")
+    mapfile -t dir <<< "$(_commacd_choose_match "${dir[@]}")"
+    [[ "${dir[0]}" == "$PWD" ]] && return 1
   fi
-  _command_cd "$dir"
+  _command_cd "${dir[0]}"
 }
 
 _commacd_completion_valid() {
