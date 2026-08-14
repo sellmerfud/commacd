@@ -199,8 +199,10 @@ _commacd_forward_by_prefix() {
 # jump forward (`,`)
 _commacd_forward() {
   local IFS=$'\n' matches dir
-  if [[ -z "$1" ]]; then
-    _commacd_errout "USAGE: , <pat>"
+  if [[ -z "$1" ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    _commacd_errout "\
+USAGE: , <pat> --  cd to child directory whose name starts with <pat>
+                   Use a/b/c to traverse multiple levels"
     return 1
   fi
   mapfile -t matches <<< "$(_commacd_forward_by_prefix "$@")"
@@ -397,18 +399,21 @@ _commacd_backward_substitute() {
 
 # choose `,,` strategy based on a number of arguments
 _commacd_backward() {
+  local USAGE="\
+USAGE: ,,               -- cd to project root
+USAGE: ,, <pat>         -- cd to closest parent that matches <pat>
+USAGE: ,, <pat1> <pat2> -- cd to path with <pat1> replaced by <pat2> in working directory"
   # when called for completion without args, we get an empty arg
   [[ $# == 1 && -z "$1" ]] && shift
+  if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    _commacd_errout "$USAGE"
+    return 1
+  fi
   case $# in
     0) _commacd_backward_projcect_root ;;
     1) _commacd_backward_by_prefix "$1" ;;
     2) _commacd_backward_substitute "$@" ;;
-    *)
-      printf "USAGE: ,,               -- cd to project root\n"
-      printf "USAGE: ,, <pat>         -- cd to closest parent that matches <pat>\n"
-      printf "USAGE: ,, <pat1> <pat2> -- cd to path with <pat1> replaced by <pat2> in working directory\n"
-      return 1
-      ;;
+    *) _commacd_errout "$USAGE" ;;
   esac
 }
 
@@ -453,7 +458,7 @@ _commacd_backward_forward_by_prefix() {
 
 # combine backtracking with `, $1` (`,,, $1`)
 _commacd_backward_forward() {
-  if [[ -z "$1" ]]; then
+  if [[ -z "$1" ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
     printf "\
 USAGE: ,,, <pat>   -- cd up the working directory and back down to\n\
                       the first directory that matches <pat>\n"
