@@ -244,7 +244,7 @@ USAGE: , <pat> --  cd to child directory whose name starts with <pat>
 _commacd_marked() {
   local dir markers
   dir="${1%/}"
-  mapfile -t markers <<< "$(echo "${COMMACD_MARKER:-.git/ .hg/ .svn/}" | tr ' ' '\n')"
+  mapfile -t markers <<< "$(echo "${COMMACD_MARKER:-.git/ .hg/ .svn/}" | tr -s ' \t,:' '\n')"
   for marker in "${markers[@]}"; do
     if [[ -e "$dir/$marker" ]]; then
       return 0
