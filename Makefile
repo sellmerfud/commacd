@@ -1,3 +1,5 @@
+.SILENT: lint test
+
 all: lint test
 
 lint:
