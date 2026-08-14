@@ -287,11 +287,17 @@ _commacd_backward_by_prefix() {
         if [[ "${parts[idx],,}" == /"${target,,}"* ]]; then
           dir="$(_commacd_join '' "${parts[@]:0:idx+1}")"
           break
-        elif [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]] && [[ "${parts[idx],,}" == /*"${target,,}"* ]]; then
-          dir="$(_commacd_join '' "${parts[@]:0:idx+1}")"
-          break
         fi
       done
+      # No match found with prefix, so try infix search
+      if [[ -z "$dir" ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
+        for ((idx = num_parts - 2; idx >= 0; --idx)); do
+          if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]] && [[ "${parts[idx],,}" == /*"${target,,}"* ]]; then
+            dir="$(_commacd_join '' "${parts[@]:0:idx+1}")"
+            break
+          fi
+        done
+      fi
     fi
   fi
 
