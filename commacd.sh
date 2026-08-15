@@ -50,9 +50,9 @@ _commacd_errout() {
 # Use when splitting a path into its component parts.
 # The first part will begin with a forward slash if the path
 # was absolute.  Each other part will always begin with a forward slash.
-# The output of this function should be redirectoed to `mapfile` to convert
+# The output of this function should be redirectoed to `readarray` to convert
 # the parts into an array as follows:
-#  ==> mapfile -t myarray <<< "$(_commacd_split "$PWD")"
+#  ==> readarray -t myarray <<< "$(_commacd_split "$PWD")"
 # This ensures that paths with spaces in the component part are handled correctly.
 _commacd_split() {
   local str="$1" lead_slash=""
@@ -111,7 +111,7 @@ _commacd_cd() {
 # show match selection menu
 _commacd_choose_match() {
   local -a matches
-  mapfile -t matches < <(printf "%s\n" "$@" | sort)
+  readarray -t matches < <(printf "%s\n" "$@" | sort)
   local i=${COMMACD_SEQSTART:-0}
   local num="${#matches[@]}"
   local width=${#num}
@@ -154,7 +154,7 @@ _commacd_prefix_glob() {
   set -f
   local components
   local path="${1%/}" IFS=$'\n'
-  mapfile -t components < <(_commacd_split "$path")
+  readarray -t components < <(_commacd_split "$path")
   echo -n "$(_commacd_join \* "${components[@]}")*/"
 }
 
@@ -179,10 +179,10 @@ _commacd_infix_glob() {
 # Utility function used by _commacd_forward()
 _commacd_forward_by_prefix() {
   local matches
-  mapfile -t matches < <(_commacd_expand "$(_commacd_prefix_glob "$1")")
+  readarray -t matches < <(_commacd_expand "$(_commacd_prefix_glob "$1")")
   _commacd_expand "$(_commacd_prefix_glob "$1")" > "$HOME"/tmp/curt
   if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]] && [[ ${#matches[@]} == 0 ]]; then
-    mapfile -t matches < <(_commacd_expand "$(_commacd_infix_glob "$1")")
+    readarray -t matches < <(_commacd_expand "$(_commacd_infix_glob "$1")")
   fi
   case ${#matches[@]} in
     0) echo -n "";;
@@ -200,7 +200,7 @@ USAGE: , <pat> --  cd to child directory whose name starts with <pat>
                    Use a/b/c to traverse multiple levels"
     return 1
   fi
-  mapfile -t matches < <(_commacd_forward_by_prefix "$@")
+  readarray -t matches < <(_commacd_forward_by_prefix "$@")
   if [[ "$COMMACD_NOTTY" == "on" ]]; then
     printf "%s\n" "${matches[@]}"
     return
@@ -236,7 +236,7 @@ USAGE: , <pat> --  cd to child directory whose name starts with <pat>
 _commacd_marked() {
   local dir markers
   dir="${1%/}"
-  mapfile -t markers < <(echo "${COMMACD_MARKER:-.git/ .hg/ .svn/}" | tr -s ' \t,:' '\n')
+  readarray -t markers < <(echo "${COMMACD_MARKER:-.git/ .hg/ .svn/}" | tr -s ' \t,:' '\n')
   for marker in "${markers[@]}"; do
     if [[ -e "$dir/$marker" ]]; then
       return 0
@@ -274,7 +274,7 @@ _commacd_backward_by_prefix() {
   if [[ "${target:0:1}" == "/" ]]; then
     [[ -d "$target" ]] && dir="$target"
   else
-    mapfile -t parts < <(_commacd_split "$PWD")
+    readarray -t parts < <(_commacd_split "$PWD")
     num_parts=${#parts[@]}
     if ((num_parts > 1)); then
       for ((idx = num_parts - 2; idx >= 0; --idx)); do
@@ -313,7 +313,7 @@ _commacd_backward_substitute() {
   local head_matches matches target
   local target_prefix="$1" repl_prefix="$2"
 
-  mapfile -t cwd_parts < <(_commacd_split "$PWD")
+  readarray -t cwd_parts < <(_commacd_split "$PWD")
   num_parts="${#cwd_parts[@]}"
   # Find right most part of the workding directory path
   # that starts with the target prefix
@@ -338,7 +338,7 @@ _commacd_backward_substitute() {
     # with the replacment prefix and a glob appended for lookup
     head_parts=("${cwd_parts[@]:0:idx}" "/$repl_prefix*")
     head="$(_commacd_join '' "${head_parts[@]}")"
-    mapfile -t head_matches < <(_commacd_expand "$head")
+    readarray -t head_matches < <(_commacd_expand "$head")
     # The tail is everything following the replaced path part
     tail_parts=("${cwd_parts[@]:idx+1}")
     tail="$(_commacd_join '' "${tail_parts[@]}")"
@@ -355,7 +355,7 @@ _commacd_backward_substitute() {
     if [[ ${#final_matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
       head_parts=("${cwd_parts[@]:0:idx}" "/*$repl_prefix*")
       head="$(_commacd_join '' "${head_parts[@]}")"
-      mapfile -t head_matches < <(_commacd_expand "$head")
+      readarray -t head_matches < <(_commacd_expand "$head")
       # The tail is everything following the replaced path part
       tail_parts=("${cwd_parts[@]:idx+1}")
       tail="$(_commacd_join '' "${tail_parts[@]}")"
@@ -422,7 +422,7 @@ _commacd_backward_forward_by_prefix() {
   dir="$PWD"
   while [[ -n "$dir" ]]; do
     dir="${dir%/*}"
-    mapfile -t matches < <(_commacd_expand "$dir/$(_commacd_prefix_glob "$1")")
+    readarray -t matches < <(_commacd_expand "$dir/$(_commacd_prefix_glob "$1")")
     # Filter out all matches that reference $PWD
     num_matches=${#matches[@]}
     for ((idx = 0; idx < num_matches; ++idx)); do
@@ -430,7 +430,7 @@ _commacd_backward_forward_by_prefix() {
     done
     matches=("${matches[@]}")
     if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]] && [[ ${#matches[@]} == 0 ]]; then
-      mapfile -t matches < <(_commacd_expand "$dir/$(_commacd_infix_glob "$1")")
+      readarray -t matches < <(_commacd_expand "$dir/$(_commacd_infix_glob "$1")")
       # Filter out all matches that reference $PWD
       num_matches=${#matches[@]}
       for ((idx = 0; idx < num_matches; ++idx)); do
@@ -457,7 +457,7 @@ USAGE: ,,, <pat>   -- cd up the working directory and back down to\n\
   local IFS=$'\n'
   local candidates dir
 
-  mapfile -t candidates < <(_commacd_backward_forward_by_prefix "$1")
+  readarray -t candidates < <(_commacd_backward_forward_by_prefix "$1")
   if [[ "$COMMACD_NOTTY" == "on" ]]; then
     printf "%s\n" "${candidates[@]}"
     return
@@ -488,11 +488,11 @@ _commacd_completion() {
     pattern="${HOME%/}/${pattern:2}"
   fi
   local completion
-  mapfile -t completion < <(COMMACD_NOTTY=on $1 "$pattern")
+  readarray -t completion < <(COMMACD_NOTTY=on $1 "$pattern")
   for i in "${!completion[@]}"; do
     completion[i]="${completion[$i]%/}";
   done
-  mapfile -t COMPREPLY < <(compgen -W "$(printf "%s\n" "${completion[@]}")" -- '')
+  readarray -t COMPREPLY < <(compgen -W "$(printf "%s\n" "${completion[@]}")" -- '')
 }
 
 _commacd_forward_completion() {
