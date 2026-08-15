@@ -43,7 +43,7 @@ fi
 _commacd_errout() {
   local fmt="$1"
   shift
-  # shellcheck disable=2059
+  # shellcheck disable=2059  # fmt variable expands to the format string
   printf "$fmt\n" "$@" >&2
 }
 
@@ -77,11 +77,13 @@ _commacd_join() {
 _commacd_expand() (  # subshell because we are calling shopt
   shopt -s extglob nullglob
   shopt -u failglob
-  # Allow globbing in case $1 contains '*'
-  # shellcheck disable=SC2206
+  # shellcheck disable=SC2206  # Do not quote $1 here to allow globbing
   local paths=($1)
-
-  printf "%s\n" "${paths[@]}"
+  if [[ "${#paths[@]}" == 0 ]]; then
+    printf ""  # Do not print newline if the array is empty
+  else
+    printf "%s\n" "${paths[@]}"
+  fi
 )
 
 # Change the current directory
@@ -109,7 +111,7 @@ _commacd_cd() {
 # show match selection menu
 _commacd_choose_match() {
   local -a matches
-  mapfile -t matches <<< "$(printf "%s\n" "$@" | sort)"
+  mapfile -t matches < <(printf "%s\n" "$@" | sort)
   local i=${COMMACD_SEQSTART:-0}
   local num="${#matches[@]}"
   local width=${#num}
@@ -152,11 +154,7 @@ _commacd_prefix_glob() {
   set -f
   local components
   local path="${1%/}" IFS=$'\n'
-  # shellcheck disable=SC2046
-  mapfile -t components <<< "$(_commacd_split "$path")"
-  # If there were no matches mapfile will create an array with
-  # a single empty entry.
-  [[ ${#components[@]} == 1 ]] && [[ -z "${components[0]}" ]] && components=()
+  mapfile -t components < <(_commacd_split "$path")
   echo -n "$(_commacd_join \* "${components[@]}")*/"
 }
 
@@ -181,13 +179,10 @@ _commacd_infix_glob() {
 # Utility function used by _commacd_forward()
 _commacd_forward_by_prefix() {
   local matches
-  mapfile -t matches <<< "$(_commacd_expand "$(_commacd_prefix_glob "$1")")"
-  # If there were no matches mapfile will create an array with
-  # a single empty entry.
-  [[ ${#matches[@]} == 1 ]] && [[ -z "${matches[0]}" ]] && matches=()
+  mapfile -t matches < <(_commacd_expand "$(_commacd_prefix_glob "$1")")
+  _commacd_expand "$(_commacd_prefix_glob "$1")" > "$HOME"/tmp/curt
   if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]] && [[ ${#matches[@]} == 0 ]]; then
-    mapfile -t matches <<< "$(_commacd_expand "$(_commacd_infix_glob "$1")")"
-    [[ ${#matches[@]} == 1 ]] && [[ -z "${matches[0]}" ]] && matches=()
+    mapfile -t matches < <(_commacd_expand "$(_commacd_infix_glob "$1")")
   fi
   case ${#matches[@]} in
     0) echo -n "";;
@@ -205,10 +200,7 @@ USAGE: , <pat> --  cd to child directory whose name starts with <pat>
                    Use a/b/c to traverse multiple levels"
     return 1
   fi
-  mapfile -t matches <<< "$(_commacd_forward_by_prefix "$@")"
-  # If there were no matches mapfile will create an array with
-  # a single empty entry.
-  [[ ${#matches[@]} == 1 ]] && [[ -z "${matches[0]}" ]] && matches=()
+  mapfile -t matches < <(_commacd_forward_by_prefix "$@")
   if [[ "$COMMACD_NOTTY" == "on" ]]; then
     printf "%s\n" "${matches[@]}"
     return
@@ -244,7 +236,7 @@ USAGE: , <pat> --  cd to child directory whose name starts with <pat>
 _commacd_marked() {
   local dir markers
   dir="${1%/}"
-  mapfile -t markers <<< "$(echo "${COMMACD_MARKER:-.git/ .hg/ .svn/}" | tr -s ' \t,:' '\n')"
+  mapfile -t markers < <(echo "${COMMACD_MARKER:-.git/ .hg/ .svn/}" | tr -s ' \t,:' '\n')
   for marker in "${markers[@]}"; do
     if [[ -e "$dir/$marker" ]]; then
       return 0
@@ -282,7 +274,7 @@ _commacd_backward_by_prefix() {
   if [[ "${target:0:1}" == "/" ]]; then
     [[ -d "$target" ]] && dir="$target"
   else
-    mapfile -t parts <<< "$(_commacd_split "$PWD")"
+    mapfile -t parts < <(_commacd_split "$PWD")
     num_parts=${#parts[@]}
     if ((num_parts > 1)); then
       for ((idx = num_parts - 2; idx >= 0; --idx)); do
@@ -321,7 +313,7 @@ _commacd_backward_substitute() {
   local head_matches matches target
   local target_prefix="$1" repl_prefix="$2"
 
-  mapfile -t cwd_parts <<< "$(_commacd_split "$PWD")"
+  mapfile -t cwd_parts < <(_commacd_split "$PWD")
   num_parts="${#cwd_parts[@]}"
   # Find right most part of the workding directory path
   # that starts with the target prefix
@@ -346,7 +338,7 @@ _commacd_backward_substitute() {
     # with the replacment prefix and a glob appended for lookup
     head_parts=("${cwd_parts[@]:0:idx}" "/$repl_prefix*")
     head="$(_commacd_join '' "${head_parts[@]}")"
-    mapfile -t head_matches <<< "$(_commacd_expand "$head")"
+    mapfile -t head_matches < <(_commacd_expand "$head")
     # The tail is everything following the replaced path part
     tail_parts=("${cwd_parts[@]:idx+1}")
     tail="$(_commacd_join '' "${tail_parts[@]}")"
@@ -363,7 +355,7 @@ _commacd_backward_substitute() {
     if [[ ${#final_matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
       head_parts=("${cwd_parts[@]:0:idx}" "/*$repl_prefix*")
       head="$(_commacd_join '' "${head_parts[@]}")"
-      mapfile -t head_matches <<< "$(_commacd_expand "$head")"
+      mapfile -t head_matches < <(_commacd_expand "$head")
       # The tail is everything following the replaced path part
       tail_parts=("${cwd_parts[@]:idx+1}")
       tail="$(_commacd_join '' "${tail_parts[@]}")"
@@ -430,8 +422,7 @@ _commacd_backward_forward_by_prefix() {
   dir="$PWD"
   while [[ -n "$dir" ]]; do
     dir="${dir%/*}"
-    mapfile -t matches <<< "$(_commacd_expand "$dir/$(_commacd_prefix_glob "$1")")"
-    [[ ${#matches[@]} == 1 ]] && [[ -z "${matches[0]}" ]] && matches=()
+    mapfile -t matches < <(_commacd_expand "$dir/$(_commacd_prefix_glob "$1")")
     # Filter out all matches that reference $PWD
     num_matches=${#matches[@]}
     for ((idx = 0; idx < num_matches; ++idx)); do
@@ -439,8 +430,7 @@ _commacd_backward_forward_by_prefix() {
     done
     matches=("${matches[@]}")
     if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]] && [[ ${#matches[@]} == 0 ]]; then
-      mapfile -t matches <<< "$(_commacd_expand "$dir/$(_commacd_infix_glob "$1")")"
-      [[ ${#matches[@]} == 1 ]] && [[ -z "${matches[0]}" ]] && matches=()
+      mapfile -t matches < <(_commacd_expand "$dir/$(_commacd_infix_glob "$1")")
       # Filter out all matches that reference $PWD
       num_matches=${#matches[@]}
       for ((idx = 0; idx < num_matches; ++idx)); do
@@ -466,11 +456,8 @@ USAGE: ,,, <pat>   -- cd up the working directory and back down to\n\
   fi
   local IFS=$'\n'
   local candidates dir
-  mapfile -t candidates <<< "$(_commacd_backward_forward_by_prefix "$1")"
-  # If there were no matches mapfile will create an array with
-  # a single empty entry.
-  [[ ${#candidates[@]} == 1 ]] && [[ -z "${candidates[0]}" ]] && candidates=()
 
+  mapfile -t candidates < <(_commacd_backward_forward_by_prefix "$1")
   if [[ "$COMMACD_NOTTY" == "on" ]]; then
     printf "%s\n" "${candidates[@]}"
     return
@@ -495,22 +482,17 @@ USAGE: ,,, <pat>   -- cd up the working directory and back down to\n\
 
 _commacd_completion() {
   local pattern=${COMP_WORDS[COMP_CWORD]} IFS=$'\n'
-  # shellcheck disable=SC2088
   # Expand patterns that start with tilde to $HOME
+  # shellcheck disable=SC2088  # match tilde literally
   if [[ "${pattern:0:2}" == "~/" ]]; then
     pattern="${HOME%/}/${pattern:2}"
   fi
-  # local completion=($(COMMACD_NOTTY=on $1 "$pattern"))
   local completion
-  mapfile -t completion <<< "$(COMMACD_NOTTY=on $1 "$pattern")"
-  # If there were no matches mapfile will create an array with
-  # a single empty entry.
-  [[ ${#completion[@]} == 1 ]] && [[ -z "${completion[0]}" ]] && completion=()
-
+  mapfile -t completion < <(COMMACD_NOTTY=on $1 "$pattern")
   for i in "${!completion[@]}"; do
     completion[i]="${completion[$i]%/}";
   done
-  mapfile -t COMPREPLY <<< "$(compgen -W "$(printf "%s\n" "${completion[@]}")" -- '')"
+  mapfile -t COMPREPLY < <(compgen -W "$(printf "%s\n" "${completion[@]}")" -- '')
 }
 
 _commacd_forward_completion() {
