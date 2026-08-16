@@ -73,15 +73,17 @@ _commacd_usage() {
    ( *     ) messages=("${fwd_msgs[@]}" "${back_msgs[@]}" "${back_fwd_msgs[@]}") ;;  
   esac
 
-    _commacd_version
-   printf "USAGE: [OPTIONS] [ARGS]\n"
-   printf "\nOPTIONS:\n"
-   printf "  -f                   -- Reverse the value of COMMACD_NOFUZZYFALLBACK\n"
-   printf "  -d                   -- Reverse the value of COMMACD_NODEEPFALLBACK\n"
-   printf "  -v, --version        -- Display version\n"
-   printf "  -h, --help           -- Display help\n"
-   printf "\nARGS:\n"
-   printf "%s\n" "${messages[@]}"
+  {
+      _commacd_versionl
+    printf "USAGE: [OPTIONS] [ARGS]\n"
+    printf "\nOPTIONS:\n"
+    printf "  -f                   -- Reverse the value of COMMACD_NOFUZZYFALLBACK\n"
+    printf "  -d                   -- Reverse the value of COMMACD_NODEEPFALLBACK\n"
+    printf "  -v, --version        -- Display version\n"
+    printf "  -h, --help           -- Display help\n"
+    printf "\nARGS:\n"
+    printf "%s\n" "${messages[@]}"
+  } >&2
 }
 
 
