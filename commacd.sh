@@ -588,17 +588,21 @@ _commacd_backward_forward() {
 
 _commacd_completion() {
   local pattern=${COMP_WORDS[COMP_CWORD]} IFS=$'\n'
-  # Expand patterns that start with tilde to $HOME
-  # shellcheck disable=SC2088  # match tilde literally
-  if [[ "${pattern:0:2}" == "~/" ]]; then
-    pattern="${HOME%/}/${pattern:2}"
+  if [[ $COMP_CWORD == 1 ]] && [[ "$pattern" =~ ^- ]]; then
+    compgen -V COMPREPLY -W $'-h\n-v\n--help\n--version' -- "$pattern"
+  else
+    # Expand patterns that start with tilde to $HOME
+    # shellcheck disable=SC2088  # match tilde literally
+    if [[ "${pattern:0:2}" == "~/" ]]; then
+      pattern="${HOME%/}/${pattern:2}"
+    fi
+    local completion
+    readarray -t completion < <(COMMACD_NOTTY=on "$1" "$pattern")
+    for i in "${!completion[@]}"; do
+      completion[i]="${completion[$i]%/}";
+    done
+    compgen -V COMPREPLY -W "$(printf "%s\n" "${completion[@]}")" -- ''
   fi
-  local completion
-  readarray -t completion < <(COMMACD_NOTTY=on $1 "$pattern")
-  for i in "${!completion[@]}"; do
-    completion[i]="${completion[$i]%/}";
-  done
-  readarray -t COMPREPLY < <(compgen -W "$(printf "%s\n" "${completion[@]}")" -- '')
 }
 
 _commacd_forward_completion() {
