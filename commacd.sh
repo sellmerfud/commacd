@@ -95,22 +95,28 @@ _commacd_expand() (
 # Change the current directory
 _commacd_cd() {
   local dir="$1" display
+  display="$(builtin cd "$dir" || return 1)"
+  if [[ -z "$display" ]]; then
+    builtin cd "$dir" && pwd || return 1
+  else
+    builtin cd "$dir" || return 1
+  fi
+}
+
+# Called to change the current directory
+# Will call a user supplied function if defined otherwise
+# falls back to _commacd_change_dir()
+_commacd_change_directory() {
+  local dir="$1"
   [[ -z "$dir" ]] && return  # Use cancelled a selection
 
-  if [[ -z "$COMMACD_CD" ]]; then
-    if [[ "$PWD" != "$dir" ]]; then
-      display="$(builtin cd "$dir" || return 1)"
-      if [[ -z "$display" ]]; then
-        builtin cd "$dir" && pwd || return 1
-      else
-        builtin cd "$dir" || return 1
-      fi
-    else
+  if [[ "$PWD" == "$dir" ]]; then
       _commacd_errout "commacd: no matches found"
       return 1
-    fi
-  else
+  elif [[ -n "$COMMACD_CD" ]]; then
     $COMMACD_CD "$dir"
+  else
+    _commacd_change_dir "$dir"
   fi
 }
 
@@ -238,7 +244,7 @@ USAGE: , <pat> --  cd to child directory whose name starts with <pat>
       return 1
       ;;
     1)
-      _commacd_cd "${matches[0]}"
+      _commacd_change_directory "${matches[0]}"
       ;;
     *)
       # https://github.com/shyiko/commacd/issues/12
@@ -251,7 +257,7 @@ USAGE: , <pat> --  cd to child directory whose name starts with <pat>
       if [[ -z "$dir" ]]; then
         return 0
       else
-        _commacd_cd "$dir"
+        _commacd_change_directory "$dir"
       fi
       ;;
   esac
@@ -286,7 +292,7 @@ _commacd_backward_projcect_root() {
     _commacd_errout "No project root found"
     return 1
   else
-    _commacd_cd "$dir"
+    _commacd_change_directory "$dir"
   fi
 }
 
@@ -328,7 +334,7 @@ _commacd_backward_by_prefix() {
     _commacd_errout "no match found"
     return 1
   else
-    _commacd_cd "$dir"
+    _commacd_change_directory "$dir"
   fi
 }
 
@@ -402,14 +408,14 @@ _commacd_backward_substitute() {
         return 1
         ;;
       1)
-        _commacd_cd "${final_matches[0]}"
+        _commacd_change_directory "${final_matches[0]}"
         ;;
       *)
         dir="$(_commacd_choose_match "${final_matches[@]}")"
         if [[ -z "$dir" ]]; then
           return 0
         else
-          _commacd_cd "$dir"
+          _commacd_change_directory "$dir"
         fi
     esac
   fi
@@ -514,7 +520,7 @@ USAGE: ,,, <pat>   -- cd up the working directory and back down to\n\
       ;;
   esac
 
-  _commacd_cd "$dir"
+  _commacd_change_directory "$dir"
 }
 
 _commacd_completion() {
