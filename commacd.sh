@@ -40,6 +40,57 @@ if [ -z "$BASH_VERSION" ]; then
   return
 fi
 
+_commacd_version() {
+  (
+    VERSION=2.0.0
+    echo "commacd $VERSION"
+  )
+}
+
+_commacd_usage() {
+  local fwd_msgs=(     "  , <target>           -- cd to child directory whose name matches <target>"
+                       "                          <target> can consist of multiple components separated by slashes: eg: s/m/scala."
+                       "                          Each component will first be matched at the start of the directory names."
+                       "                          If that produces no resulting directory then the components will be matched"
+                       "                          anywhere within the directory names.")
+  local back_msgs=(    "  ,,                   -- cd up to project root"
+                       "  ,, <target>          -- cd up to closest parent that matches <target>"
+                       "  ,, <current> <other> -- <current> is matched to a parent of the current working directory, then"
+                       "                          <other> it matches at the same level on a directory that shares a parent"
+                       "                          with <current> and has the same child path as the current working directory".)
+  local back_fwd_msgs=("  ,,, <target>         -- cd up the working directory and back down to the first child directory"
+                       "                          that matches <target>."
+                       "                          <target> can consist of multiple components separated by slashes: eg: s/m/scala."
+                       "                          Each component will first be matched at the start of the directory names."
+                       "                          If that produces no resulting directory then the components will be matched"
+                       "                          anywhere within the directory names.")
+  local -a messages=()
+
+  case "$1" in
+   ( ","   ) messages=("${fwd_msgs[@]}") ;;
+   ( ",,"  ) messages=("${back_msgs[@]}") ;;
+   ( ",,," ) messages=("${back_fwd_msgs[@]}") ;;
+   ( *     ) messages=("${fwd_msgs[@]}" "${back_msgs[@]}" "${back_fwd_msgs[@]}") ;;  
+  esac
+
+    _commacd_version
+   printf "USAGE:\n"
+   printf "%s\n" "${messages[@]}"
+}
+
+_commacd_vers_help_arg() {
+  case "$1" in
+    ( -v | --version )
+      _commacd_version
+      return 0
+    ;;
+    ( -h | --help )
+     _commacd_usage
+     return 0
+  esac
+  return 1
+}
+
 _commacd_errout() {
   local fmt="$1"
   shift
@@ -116,7 +167,7 @@ _commacd_change_directory() {
   elif [[ -n "$COMMACD_CD" ]]; then
     $COMMACD_CD "$dir"
   else
-    _commacd_change_dir "$dir"
+    _commacd_cd "$dir"
   fi
 }
 
@@ -223,15 +274,13 @@ _commacd_forward_by_prefix() {
   esac
 }
 
+
 # jump forward (`,`)
 _commacd_forward() {
   local matches dir
-  if [[ -z "$1" ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
-    _commacd_errout "\
-USAGE: , <pat> --  cd to child directory whose name starts with <pat>
-                   Use a/b/c to traverse multiple levels"
-    return 1
-  fi
+  _commacd_vers_help_arg "$1" && return 0
+  [[ -z "$1" ]] && { _commacd_usage "," ; return 1 ; }
+
   readarray -t matches < <(_commacd_forward_by_prefix "$@")
   if [[ "$COMMACD_NOTTY" == "on" ]]; then
     printf "%s\n" "${matches[@]}"
@@ -423,21 +472,18 @@ _commacd_backward_substitute() {
 
 # choose `,,` strategy based on a number of arguments
 _commacd_backward() {
-  local USAGE="\
-USAGE: ,,               -- cd to project root
-USAGE: ,, <pat>         -- cd to closest parent that matches <pat>
-USAGE: ,, <pat1> <pat2> -- cd to path with <pat1> replaced by <pat2> in working directory"
   # when called for completion without args, we get an empty arg
   [[ $# == 1 && -z "$1" ]] && shift
-  if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
-    _commacd_errout "$USAGE"
-    return 1
-  fi
+  _commacd_vers_help_arg "$1" && return 0
   case $# in
     0) _commacd_backward_projcect_root ;;
     1) _commacd_backward_by_prefix "$1" ;;
     2) _commacd_backward_substitute "$@" ;;
-    *) _commacd_errout "$USAGE" ;;
+    *)
+      _commacd_errout
+      _commacd_usage ",,"
+      return 1
+      ;;
   esac
 }
 
@@ -492,12 +538,9 @@ _commacd_backward_forward_by_prefix() {
 
 # combine backtracking with `, $1` (`,,, $1`)
 _commacd_backward_forward() {
-  if [[ -z "$1" ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
-    printf "\
-USAGE: ,,, <pat>   -- cd up the working directory and back down to\n\
-                      the first directory that matches <pat>\n"
-    return 1;
-  fi
+  _commacd_vers_help_arg "$1" && return 0
+  [[ -z "$1" ]] && { _commacd_usage ",,," ; return 1 ; }
+
   local IFS=$'\n'
   local candidates dir
   readarray -t candidates < <(_commacd_backward_forward_by_prefix "$1")
