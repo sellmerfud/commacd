@@ -125,8 +125,9 @@ _commacd_join() {
 #  extglob (set) - allow extended pattern matching
 #  nullglob (set) - patterns that match not files expand to null string (not the pattern itself)
 #  failglob (unset) - patterns that fail to match result in expansion error
+#  globstar - allow globs with /**/ for deep search
 _commacd_expand() (
-  shopt -s nocaseglob extglob nullglob
+  shopt -s nocaseglob extglob nullglob globstar
   shopt -u failglob
   # shellcheck disable=SC2206  # Do not quote $1 here to allow globbing
   local paths=($1)
