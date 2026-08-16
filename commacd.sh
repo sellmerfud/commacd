@@ -255,17 +255,37 @@ _commacd_infix_glob() {
 # Utility function used by _commacd_forward()
 _commacd_forward_by_prefix() {
   local matches target="$1"
+
+  # Filter out all matches that reference $PWD
+  # Can happend if the target begins with ../
+  filter_pwd() {
+    if [[ "$target" =~ ^\.\./ ]]; then
+      local idx pwd_base
+
+      pwd_base="$(basename "$PWD")"
+
+      for idx in "${!matches[@]}"; do
+        [[ "${matches[idx]}" =~ ^(\.\.\/)+"$pwd_base" ]] && unset 'matches[idx]'
+      done
+      matches=("${matches[@]}")
+    fi
+  }
+
   readarray -t matches < <(_commacd_expand "$(_commacd_prefix_glob "$target")")
+  filter_pwd
   if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
     readarray -t matches < <(_commacd_expand "$(_commacd_infix_glob "$target")")
+    filter_pwd
   fi
 
   # If no mathces found and the target is a relative path,
   # then try a deep search.
   if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFDEEPFALLBACK" != "on" ]] && [[ ! "$target" =~ ^/ ]]; then
     readarray -t matches < <(_commacd_expand "$(_commacd_prefix_glob "$target" deep)")
+    filter_pwd
     if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
       readarray -t matches < <(_commacd_expand "**/$(_commacd_infix_glob "$target" deep)")
+      filter_pwd
     fi
   fi
   case ${#matches[@]} in
@@ -494,7 +514,7 @@ _commacd_backward_forward_by_prefix() {
   filter_pwd() {
     local idx
     for idx in "${!matches[@]}"; do
-      [[ "${matches[idx]}" == "$PWD"* ]] && unset 'matches[idx]'
+      [[ "${matches[idx]}" =~ ^"$PWD" ]] && unset 'matches[idx]'
     done
     matches=("${matches[@]}")
   }
