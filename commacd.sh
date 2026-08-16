@@ -212,9 +212,9 @@ _commacd_prefix_glob() {
     # Absolute path
     head="/"
     path=${path#/}
-  elif [[ "$path" =~ ^(\.\.\/)+(.*) ]]; then
-    head=${BASH_REMATCH[1]}
-    path=${BASH_REMATCH[2]}
+  elif [[ "$path" =~ ^((\.\.\/)+)(.*) ]]; then
+    head="${BASH_REMATCH[1]}"
+    path="${BASH_REMATCH[3]}"
     [[ "$2" == deep ]] && head="$head**/"
   elif [[ "$2" == deep ]]; then
     # We never use deep if the path is absolute!
@@ -233,9 +233,9 @@ _commacd_infix_glob() {
     # Absolute path
     head="/"
     path=${path#/}
-  elif [[ "$path" =~ ^(\.\.\/)+(.*) ]]; then
+  elif [[ "$path" =~ ^((\.\.\/)+)(.*) ]]; then
     head=${BASH_REMATCH[1]}
-    path=${BASH_REMATCH[2]}
+    path=${BASH_REMATCH[3]}
     [[ "$2" == deep ]] && head="$head**/"
   elif [[ "$2" == deep ]]; then
     # We never use deep if the path is absolute!
@@ -592,7 +592,7 @@ _commacd_completion() {
     for i in "${!completion[@]}"; do
       completion[i]="${completion[$i]%/}";
     done
-    compgen -V COMPREPLY -W "$(printf "%s\n" "${completion[@]}")" -- ''
+    compgen -V COMPREPLY -W "$(printf "%s\n" "${completion[@]}")" -- "$pattern"
   fi
 }
 
