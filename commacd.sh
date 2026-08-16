@@ -17,6 +17,9 @@
 #   COMMACD_NOFUZZYFALLBACK - set it to "on" if you don't want commacd to use
 #     "fuzzy matching" as a fallback for "no matches by prefix"
 #     (introduced in 0.2.0)
+#   COMMACD_NOFDEEPFALLBACK - set it to "on" if you don't want commacd to try
+#     deep searching when not match can be found in the immediate current working
+#     directory.
 #   COMMACD_SEQSTART - set it to 1 if you want "multiple choices" to start
 #     from 1 instead of 0
 #     (introduced in 0.3.0)
@@ -31,11 +34,8 @@
 # @author Stanley Shyiko <stanley.shyiko@gmail.com>
 # @license MIT
 
-# turn on case-insensitive search by default
 
-if [ -n "$BASH_VERSION" ]; then
-  shopt -s nocaseglob
-else
+if [ -z "$BASH_VERSION" ]; then
   _commacd_errout "commacd: is only supported for bash"
   return
 fi
@@ -56,7 +56,7 @@ _commacd_errout() {
 # This ensures that paths with spaces in the component part are handled correctly.
 _commacd_split() {
   local str="$1" lead_slash=""
-  if [[ "$str" == /* ]]; then
+  if [[ "$str" =~ ^/ ]]; then
     lead_slash="/"
     str=${str#/}
   fi
@@ -74,8 +74,14 @@ _commacd_join() {
 
 # Resolve the given path honoring glob characters
 # It will generation zero or more paths
-_commacd_expand() (  # subshell because we are calling shopt
-  shopt -s extglob nullglob
+# Thi function runs in a subshell because we are calling shopt
+# and we don't want changes to to be permanent in the caller's shell.
+#  nocaseglob (set) - glob matches are case insensitive
+#  extglob (set) - allow extended pattern matching
+#  nullglob (set) - patterns that match not files expand to null string (not the pattern itself)
+#  failglob (unset) - patterns that fail to match result in expansion error
+_commacd_expand() (
+  shopt -s nocaseglob extglob nullglob
   shopt -u failglob
   # shellcheck disable=SC2206  # Do not quote $1 here to allow globbing
   local paths=($1)
@@ -88,7 +94,7 @@ _commacd_expand() (  # subshell because we are calling shopt
 
 # Change the current directory
 _commacd_cd() {
-  local dir="$1" IFS=$' \t\n' display
+  local dir="$1" display
   [[ -z "$dir" ]] && return  # Use cancelled a selection
 
   if [[ -z "$COMMACD_CD" ]]; then
@@ -150,39 +156,60 @@ _commacd_choose_match() {
 # at the end of each component to allow for prefix matching
 #  /aaa/bbb/ccc ==> /aaa*/bbb*/ccc*/
 _commacd_prefix_glob() {
-  local -  # restore -f option on exit
-  set -f
-  local components
-  local path="${1%/}" IFS=$'\n'
-  readarray -t components < <(_commacd_split "$path")
-  echo -n "$(_commacd_join \* "${components[@]}")*/"
+  local path="${1%/}" head=""
+  if [[ "$path" =~ ^/ ]]; then
+    # Absolute path
+    head="/"
+    path=${path#/}
+  elif [[ "$path" =~ ^(\.\.\/)+(.*) ]]; then
+    head=${BASH_REMATCH[1]}
+    path=${BASH_REMATCH[2]}
+    [[ "$2" == deep ]] && head="$head**/"
+  elif [[ "$2" == deep ]]; then
+    # We never use deep if the path is absolute!
+    head="**/"
+  fi
+  path="${path//\//*/}"
+  printf "%s%s*/" "$head" "$path"
 }
 
 # takes a path and returns the same path with glob (*)
 # at the start and end of each component to allow for infix matching
 #  /aaa/bbb/ccc ==> /*aaa*/*bbb*/*ccc*/
 _commacd_infix_glob() {
-  local -  # restore -f option on exit
-  set -f
-  local path="${1%/}" IFS=$'\n'
-  if [[ ! "$path" =~ "/" ]]; then
-    path="*$path*"
-  else
-    path="$(_commacd_prefix_glob "$path")"
-    path="${path%/}"
-    path="${path//\//\/*}"
-    [[ ! "$path" == /* ]] && path="*$path"
+  local path="${1%/}" head=""
+  if [[ "$path" =~ ^/ ]]; then
+    # Absolute path
+    head="/"
+    path=${path#/}
+  elif [[ "$path" =~ ^(\.\.\/)+(.*) ]]; then
+    head=${BASH_REMATCH[1]}
+    path=${BASH_REMATCH[2]}
+    [[ "$2" == deep ]] && head="$head**/"
+  elif [[ "$2" == deep ]]; then
+    # We never use deep if the path is absolute!
+    head="**/"
   fi
-  echo -n "$path/"
+
+  path="${path//\//*/*}"
+  printf "%s*%s*/" "$head" "$path"
 }
 
 # Utility function used by _commacd_forward()
 _commacd_forward_by_prefix() {
-  local matches
-  readarray -t matches < <(_commacd_expand "$(_commacd_prefix_glob "$1")")
-  _commacd_expand "$(_commacd_prefix_glob "$1")" > "$HOME"/tmp/curt
-  if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]] && [[ ${#matches[@]} == 0 ]]; then
-    readarray -t matches < <(_commacd_expand "$(_commacd_infix_glob "$1")")
+  local matches target="$1"
+  readarray -t matches < <(_commacd_expand "$(_commacd_prefix_glob "$target")")
+  if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
+    readarray -t matches < <(_commacd_expand "$(_commacd_infix_glob "$target")")
+  fi
+
+  # If no mathces found and the target is a relative path,
+  # then try a deep search.
+  if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFDEEPFALLBACK" != "on" ]] && [[ ! "$target" =~ ^/ ]]; then
+    readarray -t matches < <(_commacd_expand "$(_commacd_prefix_glob "$target" deep)")
+    if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
+      readarray -t matches < <(_commacd_expand "**/$(_commacd_infix_glob "$target" deep)")
+    fi
   fi
   case ${#matches[@]} in
     0) echo -n "";;
@@ -190,10 +217,9 @@ _commacd_forward_by_prefix() {
   esac
 }
 
-
 # jump forward (`,`)
 _commacd_forward() {
-  local IFS=$'\n' matches dir
+  local matches dir
   if [[ -z "$1" ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
     _commacd_errout "\
 USAGE: , <pat> --  cd to child directory whose name starts with <pat>
@@ -410,7 +436,18 @@ USAGE: ,, <pat1> <pat2> -- cd to path with <pat1> replaced by <pat2> in working 
 }
 
 _commacd_backward_forward_by_prefix() {
-  local dir path matches num_matches idx IFS=$'\n'
+  local dir path matches
+
+  # Filter out all matches that reference $PWD
+  filter_pwd() {
+    local idx
+    for idx in "${!matches[@]}"; do
+      [[ "${matches[idx]}" == "$PWD"* ]] && unset 'matches[idx]'
+    done
+    matches=("${matches[@]}")
+  }
+
+  path="${1#/}"
   path="${1%/}/"
   if [[ "${path:0:1}" == "/" ]]; then
     # assume that we've been brought here by the completion
@@ -423,21 +460,22 @@ _commacd_backward_forward_by_prefix() {
   while [[ -n "$dir" ]]; do
     dir="${dir%/*}"
     readarray -t matches < <(_commacd_expand "$dir/$(_commacd_prefix_glob "$1")")
-    # Filter out all matches that reference $PWD
-    num_matches=${#matches[@]}
-    for ((idx = 0; idx < num_matches; ++idx)); do
-      [[ "${matches[idx]}" == "$PWD"* ]] && unset 'matches[idx]'
-    done
-    matches=("${matches[@]}")
-    if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]] && [[ ${#matches[@]} == 0 ]]; then
+    filter_pwd
+    if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
       readarray -t matches < <(_commacd_expand "$dir/$(_commacd_infix_glob "$1")")
-      # Filter out all matches that reference $PWD
-      num_matches=${#matches[@]}
-      for ((idx = 0; idx < num_matches; ++idx)); do
-        [[ "${matches[idx]}" == "$PWD"* ]] && unset 'matches[idx]'
-      done
-      matches=("${matches[@]}")
+      filter_pwd
     fi
+
+    # If no mathces found then try a deep search.
+    if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFDEEPFALLBACK" != "on" ]]; then
+      readarray -t matches < <(_commacd_expand "$dir/$(_commacd_prefix_glob "$1" deep)")
+      filter_pwd
+      if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
+        readarray -t matches < <(_commacd_expand "$dir/**/$(_commacd_infix_glob "$1" deep)")
+      filter_pwd
+      fi
+    fi
+
     if [[ ${#matches[@]} != 0 ]]; then
       printf "%s\n" "${matches[@]}"
       return
@@ -456,7 +494,6 @@ USAGE: ,,, <pat>   -- cd up the working directory and back down to\n\
   fi
   local IFS=$'\n'
   local candidates dir
-
   readarray -t candidates < <(_commacd_backward_forward_by_prefix "$1")
   if [[ "$COMMACD_NOTTY" == "on" ]]; then
     printf "%s\n" "${candidates[@]}"
