@@ -17,7 +17,7 @@
 #   COMMACD_NOFUZZYFALLBACK - set it to "on" if you don't want commacd to use
 #     "fuzzy matching" as a fallback for "no matches by prefix"
 #     (introduced in 0.2.0)
-#   COMMACD_NOFDEEPFALLBACK - set it to "on" if you don't want commacd to try
+#   COMMACD_NODEEPFALLBACK - set it to "on" if you don't want commacd to try
 #     deep searching when not match can be found in the immediate current working
 #     directory.
 #   COMMACD_SEQSTART - set it to 1 if you want "multiple choices" to start
@@ -74,22 +74,16 @@ _commacd_usage() {
   esac
 
     _commacd_version
-   printf "USAGE:\n"
+   printf "USAGE: [OPTIONS] [ARGS]\n"
+   printf "\nOPTIONS:\n"
+   printf "  -f                   -- Reverse the value of COMMACD_NOFUZZYFALLBACK\n"
+   printf "  -d                   -- Reverse the value of COMMACD_NODEEPFALLBACK\n"
+   printf "  -v, --version        -- Display version\n"
+   printf "  -h, --help           -- Display help\n"
+   printf "\nARGS:\n"
    printf "%s\n" "${messages[@]}"
 }
 
-_commacd_vers_help_arg() {
-  case "$1" in
-    ( -v | --version )
-      _commacd_version
-      return 0
-    ;;
-    ( -h | --help )
-     _commacd_usage
-     return 0
-  esac
-  return 1
-}
 
 _commacd_errout() {
   local fmt="$1"
@@ -273,17 +267,17 @@ _commacd_forward_by_prefix() {
 
   readarray -t matches < <(_commacd_expand "$(_commacd_prefix_glob "$target")")
   filter_pwd
-  if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
+  if [[ ${#matches[@]} == 0 ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
     readarray -t matches < <(_commacd_expand "$(_commacd_infix_glob "$target")")
     filter_pwd
   fi
 
   # If no mathces found and the target is a relative path,
   # then try a deep search.
-  if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFDEEPFALLBACK" != "on" ]] && [[ ! "$target" =~ ^/ ]]; then
+  if [[ ${#matches[@]} == 0 ]] && [[ "$_commacd_nodeepfallback" != "on" ]] && [[ ! "$target" =~ ^/ ]]; then
     readarray -t matches < <(_commacd_expand "$(_commacd_prefix_glob "$target" deep)")
     filter_pwd
-    if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
+    if [[ ${#matches[@]} == 0 ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
       readarray -t matches < <(_commacd_expand "**/$(_commacd_infix_glob "$target" deep)")
       filter_pwd
     fi
@@ -298,7 +292,6 @@ _commacd_forward_by_prefix() {
 # jump forward (`,`)
 _commacd_forward() {
   local matches dir
-  _commacd_vers_help_arg "$1" && return 0
   [[ -z "$1" ]] && { _commacd_usage "," ; return 1 ; }
 
   readarray -t matches < <(_commacd_forward_by_prefix "$@")
@@ -385,9 +378,9 @@ _commacd_backward_by_prefix() {
         fi
       done
       # No match found with prefix, so try infix search
-      if [[ -z "$dir" ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
+      if [[ -z "$dir" ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
         for ((idx = num_parts - 2; idx >= 0; --idx)); do
-          if [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]] && [[ "${parts[idx],,}" == /*"${target,,}"* ]]; then
+          if [[ "$_commacd_nofuzzyfallback" != "on" ]] && [[ "${parts[idx],,}" == /*"${target,,}"* ]]; then
             dir="$(_commacd_join '' "${parts[@]:0:idx+1}")"
             break
           fi
@@ -400,7 +393,7 @@ _commacd_backward_by_prefix() {
     printf "%s\n" "$dir"
     return
   elif [[ -z "$dir" ]]; then
-    _commacd_errout "no match found"
+    _commacd_errout "No match for '%s'" "$target"
     return 1
   else
     _commacd_change_directory "$dir"
@@ -423,7 +416,7 @@ _commacd_backward_substitute() {
     [[ "${part,,}" == /"${target_prefix,,}"* ]] && break
   done
 
-  if [[ $idx == -1 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
+  if [[ $idx == -1 ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
     for ((idx=num_parts - 1; idx >= 0; idx--)); do
       local part="${cwd_parts[$idx]}"
       [[ "${part,,}" == /*"${target_prefix,,}"* ]] && break
@@ -453,7 +446,7 @@ _commacd_backward_substitute() {
       fi
     done
 
-    if [[ ${#final_matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
+    if [[ ${#final_matches[@]} == 0 ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
       head_parts=("${cwd_parts[@]:0:idx}" "/*$repl_prefix*")
       head="$(_commacd_join '' "${head_parts[@]}")"
       readarray -t head_matches < <(_commacd_expand "$head")
@@ -494,7 +487,6 @@ _commacd_backward_substitute() {
 _commacd_backward() {
   # when called for completion without args, we get an empty arg
   [[ $# == 1 && -z "$1" ]] && shift
-  _commacd_vers_help_arg "$1" && return 0
   case $# in
     0) _commacd_backward_projcect_root ;;
     1) _commacd_backward_by_prefix "$1" ;;
@@ -533,16 +525,16 @@ _commacd_backward_forward_by_prefix() {
     dir="${dir%/*}"
     readarray -t matches < <(_commacd_expand "$dir/$(_commacd_prefix_glob "$1")")
     filter_pwd
-    if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
+    if [[ ${#matches[@]} == 0 ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
       readarray -t matches < <(_commacd_expand "$dir/$(_commacd_infix_glob "$1")")
       filter_pwd
     fi
 
     # If no mathces found then try a deep search.
-    if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFDEEPFALLBACK" != "on" ]]; then
+    if [[ ${#matches[@]} == 0 ]] && [[ "$_commacd_nodeepfallback" != "on" ]]; then
       readarray -t matches < <(_commacd_expand "$dir/$(_commacd_prefix_glob "$1" deep)")
       filter_pwd
-      if [[ ${#matches[@]} == 0 ]] && [[ "$COMMACD_NOFUZZYFALLBACK" != "on" ]]; then
+      if [[ ${#matches[@]} == 0 ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
         readarray -t matches < <(_commacd_expand "$dir/**/$(_commacd_infix_glob "$1" deep)")
       filter_pwd
       fi
@@ -558,7 +550,6 @@ _commacd_backward_forward_by_prefix() {
 
 # combine backtracking with `, $1` (`,,, $1`)
 _commacd_backward_forward() {
-  _commacd_vers_help_arg "$1" && return 0
   [[ -z "$1" ]] && { _commacd_usage ",,," ; return 1 ; }
 
   local IFS=$'\n'
@@ -619,9 +610,80 @@ _commacd_backward_forward_completion() {
   _commacd_completion _commacd_backward_forward
 }
 
-alias ,=_commacd_forward
-alias ,,=_commacd_backward
-alias ,,,=_commacd_backward_forward
+
+_commacd_main() {
+  local action="$1"
+  shift
+  local args=("$@")
+  local restore_shopt
+
+  restore_shopt="$(shopt -p extglob)"
+  shopt -s extglob
+  _commacd_nofuzzyfallback="$COMMACD_NOFUZZYFALLBACK"
+  _commacd_nodeepfallback="$COMMACD_NODEEPFALLBACK"
+
+  for arg in "${args[@]}"; do
+    case "$arg" in
+      ( -v | --version )
+        _commacd_version
+        $restore_shopt
+        return 0
+      ;;
+      ( -h | --help )
+      _commacd_usage
+      $restore_shopt
+      return 0
+      ;;
+
+    ( -- )
+      # signals start of arguments
+      shift
+      break
+      ;;
+
+    ( -* )
+      local len="${#arg}" i
+      shift
+      for ((i = 1; i < len; ++i)); do
+        local opt="${arg:i:1}"
+        case "$opt" in
+          ( f )
+            if [[ "$_commacd_nofuzzyfallback" == "on" ]]
+              then _commacd_nofuzzyfallback=off
+              else _commacd_nofuzzyfallback=on;
+            fi
+            ;;
+          ( d )
+            if [[ "$_commacd_nodeepfallback" == "on" ]]
+              then _commacd_nodeepfallback=off
+              else _commacd_nodeepfallback=on
+            fi
+            ;;
+          ( * )
+            _commacd_errout "Invalid option: '%s'\n" "-$opt"
+            $restore_shopt
+            return 1
+            ;;
+        esac
+      done
+      ;;
+
+    ( * )
+      # Non option signals start of arguments
+      break
+      ;;
+    esac
+  done
+
+  $action "$@"
+  local result="$?"
+  $restore_shopt
+  return "$result"
+}
+
+alias ,='_commacd_main _commacd_forward'
+alias ,,='_commacd_main _commacd_backward'
+alias ,,,='_commacd_main _commacd_backward_forward'
 
 if [ -n "$BASH_VERSION" ]; then
   complete -o filenames -F _commacd_forward_completion ,
