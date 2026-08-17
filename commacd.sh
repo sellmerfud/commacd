@@ -583,7 +583,7 @@ _commacd_backward_forward() {
 _commacd_completion() {
   local pattern=${COMP_WORDS[COMP_CWORD]} IFS=$'\n'
   if [[ $COMP_CWORD == 1 ]] && [[ "$pattern" =~ ^- ]]; then
-    compgen -V COMPREPLY -W $'-h\n-v\n--help\n--version' -- "$pattern"
+    compgen -V COMPREPLY -W $'-f\n-d\n-h\n-v\n--help\n--version' -- "$pattern"
   else
     # Expand patterns that start with tilde to $HOME
     # shellcheck disable=SC2088  # match tilde literally
