@@ -182,8 +182,7 @@ _commacd_choose_match() {
   local threshold=$((11-${COMMACD_SEQSTART:-0}))
   # Loop until we get a valid response
   while true; do
-    if [[ "$COMMACD_IMPLICITENTER" == "on" && \
-        ${#matches[@]} -lt $threshold ]]; then
+    if [[ "$COMMACD_IMPLICITENTER" == "on" ]] && ((${#matches[@]} < threshold)); then
       read -r -n1 -e -p ': ' selection >&2
     else
       read -r -e -p ': ' selection >&2
@@ -270,17 +269,17 @@ _commacd_forward_by_prefix() {
 
   readarray -t matches < <(_commacd_expand "$(_commacd_prefix_glob "$target")")
   filter_pwd
-  if [[ ${#matches[@]} == 0 ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
+  if [[ ${#matches[@]} == 0 && "$_commacd_nofuzzyfallback" != "on" ]]; then
     readarray -t matches < <(_commacd_expand "$(_commacd_infix_glob "$target")")
     filter_pwd
   fi
 
   # If no mathces found and the target is a relative path,
   # then try a deep search.
-  if [[ ${#matches[@]} == 0 ]] && [[ "$_commacd_nodeepfallback" != "on" ]] && [[ ! "$target" =~ ^/ ]]; then
+  if [[ ${#matches[@]} == 0 && "$_commacd_nodeepfallback" != "on" && ! "$target" =~ ^/ ]]; then
     readarray -t matches < <(_commacd_expand "$(_commacd_prefix_glob "$target" deep)")
     filter_pwd
-    if [[ ${#matches[@]} == 0 ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
+    if [[ ${#matches[@]} == 0 && "$_commacd_nofuzzyfallback" != "on" ]]; then
       readarray -t matches < <(_commacd_expand "**/$(_commacd_infix_glob "$target" deep)")
       filter_pwd
     fi
@@ -375,15 +374,15 @@ _commacd_backward_by_prefix() {
     num_parts=${#parts[@]}
     if ((num_parts > 1)); then
       for ((idx = num_parts - 2; idx >= 0; --idx)); do
-        if [[ "${parts[idx],,}" == /"${target,,}"* ]]; then
+        if [[ "${parts[idx],,}" == /${target,,}* ]]; then
           dir="$(_commacd_join '' "${parts[@]:0:idx+1}")"
           break
         fi
       done
       # No match found with prefix, so try infix search
-      if [[ -z "$dir" ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
+      if [[ -z "$dir" && "$_commacd_nofuzzyfallback" != "on" ]]; then
         for ((idx = num_parts - 2; idx >= 0; --idx)); do
-          if [[ "$_commacd_nofuzzyfallback" != "on" ]] && [[ "${parts[idx],,}" == /*"${target,,}"* ]]; then
+          if [[ "$_commacd_nofuzzyfallback" != "on" && "${parts[idx],,}" == /*${target,,}* ]]; then
             dir="$(_commacd_join '' "${parts[@]:0:idx+1}")"
             break
           fi
@@ -416,13 +415,13 @@ _commacd_backward_substitute() {
   # that starts with the target prefix
   for ((idx=num_parts - 1; idx >= 0; idx--)); do
     local part="${cwd_parts[$idx]}"
-    [[ "${part,,}" == /"${target_prefix,,}"* ]] && break
+    [[ "${part,,}" == /${target_prefix,,}* ]] && break
   done
 
-  if [[ $idx == -1 ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
+  if [[ $idx == -1 && "$_commacd_nofuzzyfallback" != "on" ]]; then
     for ((idx=num_parts - 1; idx >= 0; idx--)); do
       local part="${cwd_parts[$idx]}"
-      [[ "${part,,}" == /*"${target_prefix,,}"* ]] && break
+      [[ "${part,,}" == /*${target_prefix,,}* ]] && break
     done
   fi
 
@@ -444,12 +443,12 @@ _commacd_backward_substitute() {
     final_matches=()
     for head_match in "${head_matches[@]}"; do
       local candidate="$head_match$tail"
-      if [[ -d "$candidate" ]] && [[ "$candidate" != "$PWD" ]]; then
+      if [[ -d "$candidate" && "$candidate" != "$PWD" ]]; then
         final_matches+=("$candidate")
       fi
     done
 
-    if [[ ${#final_matches[@]} == 0 ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
+    if [[ ${#final_matches[@]} == 0 && "$_commacd_nofuzzyfallback" != "on" ]]; then
       head_parts=("${cwd_parts[@]:0:idx}" "/*$repl_prefix*")
       head="$(_commacd_join '' "${head_parts[@]}")"
       readarray -t head_matches < <(_commacd_expand "$head")
@@ -461,7 +460,7 @@ _commacd_backward_substitute() {
       final_matches=()
       for head_match in "${head_matches[@]}"; do
         local candidate="$head_match$tail"
-        if [[ -d "$candidate" ]] && [[ "$candidate" != "$PWD" ]]; then
+        if [[ -d "$candidate" && "$candidate" != "$PWD" ]]; then
           final_matches+=("$candidate")
         fi
       done
@@ -528,16 +527,16 @@ _commacd_backward_forward_by_prefix() {
     dir="${dir%/*}"
     readarray -t matches < <(_commacd_expand "$dir/$(_commacd_prefix_glob "$1")")
     filter_pwd
-    if [[ ${#matches[@]} == 0 ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
+    if [[ ${#matches[@]} == 0 && "$_commacd_nofuzzyfallback" != "on" ]]; then
       readarray -t matches < <(_commacd_expand "$dir/$(_commacd_infix_glob "$1")")
       filter_pwd
     fi
 
     # If no mathces found then try a deep search.
-    if [[ ${#matches[@]} == 0 ]] && [[ "$_commacd_nodeepfallback" != "on" ]]; then
+    if [[ ${#matches[@]} == 0 && "$_commacd_nodeepfallback" != "on" ]]; then
       readarray -t matches < <(_commacd_expand "$dir/$(_commacd_prefix_glob "$1" deep)")
       filter_pwd
-      if [[ ${#matches[@]} == 0 ]] && [[ "$_commacd_nofuzzyfallback" != "on" ]]; then
+      if [[ ${#matches[@]} == 0 && "$_commacd_nofuzzyfallback" != "on" ]]; then
         readarray -t matches < <(_commacd_expand "$dir/**/$(_commacd_infix_glob "$1" deep)")
       filter_pwd
       fi
@@ -582,7 +581,7 @@ _commacd_backward_forward() {
 
 _commacd_completion() {
   local pattern=${COMP_WORDS[COMP_CWORD]} IFS=$'\n'
-  if [[ $COMP_CWORD == 1 ]] && [[ "$pattern" =~ ^- ]]; then
+  if [[ $COMP_CWORD == 1 && "$pattern" =~ ^- ]]; then
     compgen -V COMPREPLY -W $'-f\n-d\n-h\n-v\n--help\n--version' -- "$pattern"
   else
     # Expand patterns that start with tilde to $HOME
