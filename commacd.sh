@@ -622,8 +622,8 @@ _commacd_main() {
 
   restore_shopt="$(shopt -p extglob)"
   shopt -s extglob
-  _commacd_nofuzzyfallback="$COMMACD_NOFUZZYFALLBACK"
-  _commacd_nodeepfallback="$COMMACD_NODEEPFALLBACK"
+  _commacd_nofuzzyfallback="${COMMACD_NOFUZZYFALLBACK:-off}"
+  _commacd_nodeepfallback="${COMMACD_NODEEPFALLBACK:-off}"
 
   for arg in "${args[@]}"; do
     case "$arg" in
